@@ -1,6 +1,7 @@
 pub struct CPU{
     pub register_a:u8,//Acumulator
     pub register_x:u8,
+    pub register_y:u8,
     pub status: u8,/*flag
     |Negative|oVerflow| |Break command|
     Decimal mode flag|Interpret disable|Zero flag|Carry flag
@@ -10,18 +11,85 @@ pub struct CPU{
 
 }
 
+
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
+pub enum AddressingMode{
+    Immediate,
+    ZeroPage,//現在のPCがさす8byteの情報をを16byteのアドレスとみなしてメモリにアクセス→register_aに格納
+    ZeroPage_X,//現在のPCがさす8byteの情報+regoster_xを16byteのアドレスとみなす
+    ZeroPage_Y,
+    Absolute,//16byteのフルアクセス
+    Absolute_X,
+    Absolute_Y,
+    Indirect_X,
+    Indirect_Y,
+    NoneAddressing,
+}
 impl CPU{
     pub fn new()->Self{
         CPU { 
             register_a: 0, 
             register_x:0,
+            register_y:0,
             status: 0, //0b0000_0000
             program_counter: 0, 
             memory:[0;0xFFFF],
         }
     } 
 
-    fn lda(&mut self, value:u8){
+    fn get_operand_address(&self,mode:&AddressingMode)->u16{
+        match mode {
+            AddressingMode::Immediate=>self.program_counter,
+            AddressingMode::ZeroPage=>self.mem_read(self.program_counter) as u16,
+            AddressingMode::Absolute=>self.mem_read_u16(self.program_counter),
+            AddressingMode::ZeroPage_X=>{
+                let pos =self.mem_read(self.program_counter);
+                let addr=pos.wrapping_add(self.register_x) as u16;
+                addr
+            }
+            AddressingMode::ZeroPage_Y=>{
+                let pos =self.mem_read(self.program_counter);
+                let addr =pos.wrapping_add(self.register_y) as u16;
+                addr
+            }
+            AddressingMode::Absolute_X=>{
+                let base =self.mem_read_u16(self.program_counter);
+                let addr =base.wrapping_add(self.register_x as u16);
+                addr
+            }
+            AddressingMode::Absolute_Y=>{
+                let base =self.mem_read_u16(self.program_counter);
+                let addr =base.wrapping_add(self.register_y as u16);
+                addr
+            }
+            AddressingMode::Indirect_X=>{
+                let base =self.mem_read(self.program_counter);
+
+                let ptr:u8=(base as u8).wrapping_add(self.register_x);
+                let lo =self.mem_read(ptr as u16);
+                let hi =self.mem_read(ptr.wrapping_add(1) as u16);
+                (hi as u16)<<8|(lo as u16)
+            }
+            AddressingMode::Indirect_Y=>{
+                let base=self.mem_read(self.program_counter);
+
+                let lo =self.mem_read(base as u16);
+                let hi=self.mem_read((base as u8).wrapping_add(1) as u16);
+                let deref_base=(hi as u16)<<8|(lo as u16);
+                let deref=deref_base.wrapping_add(self.register_y as u16);
+                deref
+            }
+            AddressingMode::NoneAddressing=>{
+                panic!("mode {:?} id not supported",mode);
+            }
+        }
+    }
+
+    fn lda(&mut self, mode: &AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
         self.register_a=value;
         self.update_zero_and_negative_flags(self.register_a);
     }
@@ -67,7 +135,7 @@ impl CPU{
         self.memory[addr as usize]
     }
 
-    fn mem_read_u16(&mut self, pos:u16)->u16{
+    fn mem_read_u16(&self, pos:u16)->u16{
         let lo=self.mem_read(pos) as u16;
         let hi =self.mem_read(pos+1) as u16;
         (hi<<8)|(lo as u16)//<<は左シフト演算子
@@ -108,9 +176,9 @@ impl CPU{
 
     pub fn run(&mut self){
         loop{
-            let opscode=self.mem_read(self.program_counter);
+            let code =self.mem_read(self.program_counter);
             self.program_counter+=1;
-            match opscode{
+            match code{
                 0xA2=>{
                     let param=self.mem_read(self.program_counter);
                     self.program_counter+=1;
@@ -118,13 +186,49 @@ impl CPU{
                     self.ldx(param);
                 }
 
-                0xA9=>{//LDA
-                    let param=self.mem_read(self.program_counter);
+                //LDA
+                0xA9=>{
+                    self.lda(&AddressingMode::Immediate);
                     self.program_counter+=1;
-
-                    self.lda(param);
                 }
 
+                0xA5=>{
+                    self.lda(&AddressingMode::ZeroPage);
+                    self.program_counter+=1;
+                }
+
+                0xB5=>{
+                    self.lda(&AddressingMode::ZeroPage_X);
+                    self.program_counter+=1;
+                }
+
+                0xAD=>{
+                    self.lda(&AddressingMode::Absolute);
+                    self.program_counter+=2;
+                }
+
+                0xBD=>{
+                    self.lda(&AddressingMode::Absolute_X);
+                    self.program_counter+=2;
+                }
+
+                0xB9=>{
+                    self.lda(&AddressingMode::Absolute_Y);
+                    self.program_counter+=2;
+                }
+
+                0xA1=>{
+                    self.lda(&AddressingMode::Indirect_X);
+                    self.program_counter+=1;
+                }
+
+                0xB1=>{
+                    self.lda(&AddressingMode::Indirect_Y);
+                    self.program_counter+=1;
+                }
+
+
+                //TAX
                 0xAA=>{
                     self.tax();
                 }
@@ -197,6 +301,15 @@ mod test{
         cpu.interpret(vec![0xa2,0xff,0xe8,0xe8,0x00]);
 
         assert_eq!(cpu.register_x,1);
+    }
+
+    #[test]
+    fn test_lda_from_memory(){
+        let mut cpu=CPU::new();
+        cpu.mem_write(0x10,0x55);
+        cpu.load_and_run(vec![0xa5,0x10,0x00]);
+
+        assert_eq!(cpu.register_a,0x55);
     }
 }
 
