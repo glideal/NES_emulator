@@ -26,6 +26,11 @@ impl CPU{
         self.update_zero_and_negative_flags(self.register_a);
     }
 
+    fn ldx(&mut self, value:u8){
+        self.register_x=value;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
     fn tax(&mut self){
         self.register_x=self.register_a;
         self.update_zero_and_negative_flags(self.register_x);
@@ -72,29 +77,47 @@ impl CPU{
         self.memory[addr as usize]=data;
     }
 
-    fn mem_wtite_u16(&mut self, pos:u16,data:u16){
+    fn mem_write_u16(&mut self, pos:u16,data:u16){
         let hi=(data>>8) as u8;
         let lo=(data & 0b00000000_11111111) as u8;
         self.mem_write(pos,lo);
         self.mem_write(pos+1,hi);
     }
-    
+
+
     pub fn load_and_run(&mut self,program:Vec<u8>){
         self.load(program);
+        self.reset();
         self.run();
     }
 
     pub fn load(&mut self,program:Vec<u8>){
         self.memory[0x8000..(0x8000+program.len())].copy_from_slice(&program[..]);
         //memory[0c8000..(ox8000+program.len())]にprogram[..]の内容を格納する。
-        self.program_counter=0x8000;
+        self.mem_write_u16(0xFFFC,0x8000);
     }
+
+    pub fn reset(&mut self){
+        self.register_a=0;
+        self.register_x=0;
+        self.status=0;
+
+        self.program_counter=self.mem_read_u16(0xFFFC);
+    }
+
 
     pub fn run(&mut self){
         loop{
             let opscode=self.mem_read(self.program_counter);
             self.program_counter+=1;
             match opscode{
+                0xA2=>{
+                    let param=self.mem_read(self.program_counter);
+                    self.program_counter+=1;
+
+                    self.ldx(param);
+                }
+
                 0xA9=>{//LDA
                     let param=self.mem_read(self.program_counter);
                     self.program_counter+=1;
@@ -157,8 +180,7 @@ mod test{
     #[test]
     fn test_0xaa_tax(){
         let mut cpu=CPU::new();
-        cpu.register_a=10;
-        cpu.interpret(vec![0xaa,0x00]);
+        cpu.interpret(vec![0xa9,10,0xaa,0x00]);
         assert_eq!(cpu.register_x,10);
     }
 
@@ -170,10 +192,9 @@ mod test{
         assert_eq!(cpu.register_x,0xc1);
     }
     #[test]
-    fn test_inx_ooverflow(){
+    fn test_inx_overflow(){
         let mut cpu=CPU::new();
-        cpu.register_x=0xff;
-        cpu.interpret(vec![0xe8,0xe8,0x00]);
+        cpu.interpret(vec![0xa2,0xff,0xe8,0xe8,0x00]);
 
         assert_eq!(cpu.register_x,1);
     }
