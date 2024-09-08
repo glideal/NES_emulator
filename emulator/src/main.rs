@@ -1,21 +1,21 @@
 pub struct CPU{
     pub register_a:u8,//Acumulator
+    pub register_x:u8,
     pub status: u8,/*flag
     |Negative|oVerflow| |Break command|
     Decimal mode flag|Interpret disable|Zero flag|Carry flag
     */
     pub program_counter:u16,
 
-    pub register_x:u8,
 }
 
 impl CPU{
     pub fn new()->Self{
         CPU { 
             register_a: 0, 
+            register_x:0,
             status: 0, //0b0000_0000
             program_counter: 0, 
-            register_x:0,
         }
     } 
 
@@ -26,6 +26,18 @@ impl CPU{
 
     fn tax(&mut self){
         self.register_x=self.register_a;
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn inx(&mut self){
+        self.register_x=self.register_x.wrapping_add(1);
+        /*
+        if self.register_x==0xff{
+            self.register_x=0x00;
+        }else{
+            self.register_x+=1;
+        }
+        */
         self.update_zero_and_negative_flags(self.register_x);
     }
 
@@ -57,9 +69,13 @@ impl CPU{
 
                     self.lda(param);
                 }
-                
+
                 0xAA=>{
-                    self.tax()
+                    self.tax();
+                }
+
+                0xE8=>{
+                    self.inx();
                 }
 
                 0x00=>{
@@ -94,6 +110,15 @@ mod test{
         cpu.interpret(vec![0xa9,0x00,0x00]);
         assert!(cpu.status&0b0000_0010==0b10);
     }
+    
+    #[test]
+    fn test_0xa9_lda_negative_flag() {
+        let mut cpu = CPU::new();
+        cpu.interpret(vec![0xa9, 0xff, 0x00]);
+        assert!(cpu.status & 0b1000_0000 == 0b1000_0000);
+
+    }
+
 
     #[test]
     fn test_0xaa_tax(){
@@ -101,6 +126,22 @@ mod test{
         cpu.register_a=10;
         cpu.interpret(vec![0xaa,0x00]);
         assert_eq!(cpu.register_x,10);
+    }
+
+    #[test]
+    fn test_5_ops_working_together(){
+        let mut cpu =CPU::new();
+        cpu.interpret(vec![0xa9,0xc0,0xaa,0xe8,0x00]);
+
+        assert_eq!(cpu.register_x,0xc1);
+    }
+    #[test]
+    fn test_inx_ooverflow(){
+        let mut cpu=CPU::new();
+        cpu.register_x=0xff;
+        cpu.interpret(vec![0xe8,0xe8,0x00]);
+
+        assert_eq!(cpu.register_x,1);
     }
 }
 
