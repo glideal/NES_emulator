@@ -102,6 +102,11 @@ impl CPU{
         self.update_zero_and_negative_flags(self.register_x);
     }
 
+    fn sta(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        self.mem_write(addr,self.register_a);
+    }
+
     fn tax(&mut self){
         self.register_x=self.register_a;
         self.update_zero_and_negative_flags(self.register_x);
@@ -198,6 +203,12 @@ impl CPU{
                     self.program_counter+=(opcode.len-1) as u16;
                 }
 
+                //STA
+                0x85|0x95|0x8d|0x9d|0x99|0x81|0x91=>{
+                    self.sta(&opcode.mode);
+                    self.program_counter+=(opcode.len-1) as u16;
+                }
+
                 //TAX
                 0xAA=>{
                     self.tax();
@@ -280,6 +291,13 @@ mod test{
         cpu.load_and_run(vec![0xa5,0x10,0x00]);
 
         assert_eq!(cpu.register_a,0x55);
+    }
+
+    #[test]
+    fn test_sta_from_memory() {
+        let mut cpu =CPU::new();
+        cpu.load_and_run(vec![0xA9,0xBA,0x85, 0x10, 0x00]); 
+        assert_eq!(cpu.mem_read(0x10), 0xBA);
     }
 }
 
