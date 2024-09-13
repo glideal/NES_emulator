@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use crate::opcodes;
+
 pub struct CPU{
     pub register_a:u8,//Acumulator
     pub register_x:u8,
@@ -175,9 +178,12 @@ impl CPU{
 
 
     pub fn run(&mut self){
+        let ref opcodes:HashMap<u8,&'static opcodes::OpCode>=*opcodes::OPCODES_MAP;
         loop{
             let code =self.mem_read(self.program_counter);
             self.program_counter+=1;
+
+            let opcode=opcodes.get(&code).expect(&format!("OpCode {:?} is not recognized",code));
             match code{
                 0xA2=>{
                     let param=self.mem_read(self.program_counter);
@@ -187,46 +193,10 @@ impl CPU{
                 }
 
                 //LDA
-                0xA9=>{
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter+=1;
+                0xA9|0xA5|0xB5|0xAD|0xBD|0xB9|0xA1|0xB1=>{
+                    self.lda(&opcode.mode);
+                    self.program_counter+=(opcode.len-1) as u16;
                 }
-
-                0xA5=>{
-                    self.lda(&AddressingMode::ZeroPage);
-                    self.program_counter+=1;
-                }
-
-                0xB5=>{
-                    self.lda(&AddressingMode::ZeroPage_X);
-                    self.program_counter+=1;
-                }
-
-                0xAD=>{
-                    self.lda(&AddressingMode::Absolute);
-                    self.program_counter+=2;
-                }
-
-                0xBD=>{
-                    self.lda(&AddressingMode::Absolute_X);
-                    self.program_counter+=2;
-                }
-
-                0xB9=>{
-                    self.lda(&AddressingMode::Absolute_Y);
-                    self.program_counter+=2;
-                }
-
-                0xA1=>{
-                    self.lda(&AddressingMode::Indirect_X);
-                    self.program_counter+=1;
-                }
-
-                0xB1=>{
-                    self.lda(&AddressingMode::Indirect_Y);
-                    self.program_counter+=1;
-                }
-
 
                 //TAX
                 0xAA=>{
