@@ -103,11 +103,172 @@ impl CPU{
         }
     }
 
+    fn sbc(&mut self,mode:&AddressingMode){
+        let addr =self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        let mut data=(0b1111_1111)-value+1;//=-(value)//補数表現
+        data=data.wrapping_sub(1);//キャリーフラグによる減算のため
+        self.add_to_register_a(data/*(value as i8).wrapping_neg().wrapping_sub(1)as u8*/);
+    }
+
     fn adc(&mut self,mode:&AddressingMode){
         let addr=self.get_operand_address(mode);
         let value=self.mem_read(addr);
 
         self.add_to_register_a(value);
+    }
+
+    //logical calculation
+    fn and(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        self.register_a=self.register_a&value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn eor(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        self.register_a=self.register_a^value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn ora(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        self.register_a=self.register_a|value;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+    
+
+    //shift calculation
+    fn asl_accumulator(&mut self){//ArithmeticもLogicalも変わらない
+        if self.register_a&0b1000_0000!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        self.register_a=self.register_a<<1;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn asl(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut data=self.mem_read(addr);
+
+        if data&0b1000_0000!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        data=data<<1;
+        self.mem_write(addr,data);
+        self.update_zero_and_negative_flags(data);
+    }
+
+
+    fn lsr_accumulator(&mut self){
+        if self.register_a&0b0000_0001!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        self.register_a=self.register_a>>1;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn lsr(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut data=self.mem_read(addr);
+
+        if data&0b0000_0001!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        data=data>>1;
+        self.mem_write(addr,data);
+        self.update_zero_and_negative_flags(data);
+    }
+
+    fn rol_accumulator(&mut self){
+        let mut tmp=self.register_a;
+        if self.status&0b0000_0001!=0{//キャラ―フラグが１だったら
+            tmp=(tmp<<1)|0b0000_0001;
+        }else{
+            tmp=(tmp<<1)&0b1111_1110;
+        }        
+
+        if self.register_a&0b1000_0000!=0{//7ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        self.register_a=tmp;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn rol(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut data=self.mem_read(addr);
+
+        let mut tmp=data;
+        if self.status&0b0000_0001!=0{//キャラ―フラグが１だったら
+            tmp=(tmp<<1)|0b0000_0001;
+        }else{
+            tmp=(tmp<<1)&0b1111_1110;
+        }        
+
+        if data&0b1000_0000!=0{//7ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        data=tmp;
+        self.mem_write(addr,data);
+        self.update_zero_and_negative_flags(self.mem_read(addr));
+    }
+
+    fn ror_accumulator(&mut self){
+        let mut tmp=self.register_a;
+        if self.status&0b0000_0001!=0{//キャラ―フラグが１だったら
+            tmp=(tmp>>1)|0b1000_0000;
+        }else{
+            tmp=(tmp>>1)&0b0111_1111;
+        }        
+
+        if self.register_a&0b0000_0001!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        self.register_a=tmp;
+        self.update_zero_and_negative_flags(self.register_a);
+    }
+
+    fn ror(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut data=self.mem_read(addr);
+
+        let mut tmp=data;
+        if self.status&0b0000_0001!=0{//キャラ―フラグが１だったら
+            tmp=(tmp>>1)|0b1000_0000;
+        }else{
+            tmp=(tmp>>1)&0b0111_1111;
+        }        
+
+        if data&0b0000_0001!=0{//0ビット目が1だったら
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }        
+        data=tmp;
+        self.mem_write(addr,data);
+        self.update_zero_and_negative_flags(self.mem_read(addr));
     }
 
     fn lda(&mut self, mode: &AddressingMode){
@@ -182,7 +343,7 @@ impl CPU{
         let sum=self.register_a as u16
                     +data as u16
                     +(
-                        if self.status&0000_0001!=0{
+                        if self.status&0000_0001!=0{//キャリーフラグがセットされてたら
                             1
                         }else{
                             0
@@ -248,36 +409,79 @@ impl CPU{
 
             let opcode=opcodes.get(&code).expect(&format!("OpCode {:?} is not recognized",code));
             match code{
+                //LDX
                 0xA2=>{
                     let param=self.mem_read(self.program_counter);
-                    self.program_counter+=1;
-
                     self.ldx(param);
                 }
 
                 //LDA
                 0xA9|0xA5|0xB5|0xAD|0xBD|0xB9|0xA1|0xB1=>{
                     self.lda(&opcode.mode);
-                    self.program_counter+=(opcode.len-1) as u16;
                 }
 
                 //STA
                 0x85|0x95|0x8d|0x9d|0x99|0x81|0x91=>{
                     self.sta(&opcode.mode);
-                    self.program_counter+=(opcode.len-1) as u16;
                 }
 
                 //ADC
                 0x69|0x65|0x75|0x6D|0x7D|0x79|0x61|0x71=>{
                     self.adc(&opcode.mode);
-                    self.program_counter+=(opcode.len-1) as u16;
+                }
+
+                //SBC
+                0xe9 | 0xe5 | 0xf5 | 0xed | 0xfd | 0xf9 | 0xe1 | 0xf1 => {
+                    self.sbc(&opcode.mode);
+                }
+
+                //LOGICAL
+                //AND
+                0x29|0x25|0x35|0x2D|0x3D|0x39|0x21|0x31=>{
+                    self.and(&opcode.mode);
+                }
+
+                // EOR
+                0x49 | 0x45 | 0x55 | 0x4d | 0x5d | 0x59 | 0x41 | 0x51 => {
+                    self.eor(&opcode.mode);
+                }
+
+                // ORA
+                0x09 | 0x05 | 0x15 | 0x0d | 0x1d | 0x19 | 0x01 | 0x11 => {
+                    self.ora(&opcode.mode);
+                }
+
+
+                //SHIFT
+                // ASL 
+                0x0a => self.asl_accumulator(),
+                0x06 | 0x16 | 0x0e | 0x1e => {
+                    self.asl(&opcode.mode);
+                }
+
+                // LSR 
+                0x4a => self.lsr_accumulator(),
+                0x46 | 0x56 | 0x4e | 0x5e => {
+                    self.lsr(&opcode.mode);
+                }
+                
+                // ROL 
+                0x2a => self.rol_accumulator(),
+                0x26 | 0x36 | 0x2e | 0x3e => {
+                    self.rol(&opcode.mode);
+                }
+
+                // ROR 
+                0x6a => self.ror_accumulator(),
+                0x66 | 0x76 | 0x6e | 0x7e => {
+                    self.ror(&opcode.mode);
                 }
 
                 //TAX
                 0xAA=>{
                     self.tax();
                 }
-
+                //INX
                 0xE8=>{
                     self.inx();
                 }
@@ -287,6 +491,8 @@ impl CPU{
                 }
                 _=>todo!()
             }
+            self.program_counter+=(opcode.len-1) as u16;
+            println!("{}",self.program_counter);
         }
     }
 
@@ -535,6 +741,382 @@ mod test{
         assert_eq!(cpu.register_a, 0x01);
         assert_eq!(cpu.status,0b0000_0001);
     }
+    
+    // SBC
+    #[test]
+    fn test_sbc_no_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x10, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x20;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x0F);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
 
+    #[test]
+    fn test_sbc_has_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x10, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x20;
+        cpu.status=cpu.status|0b0000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0x10);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+    #[test]
+    fn test_sbc_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x02, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x01;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xFE);
+        assert_eq!(cpu.status,0b1000_0000);
+    }
+
+    #[test]
+    fn test_sbc_occur_overflow() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x81, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x7F;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xFD);
+        assert_eq!(cpu.status,0b1100_0000);
+    }
+
+    #[test]
+    fn test_sbc_occur_overflow_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x81, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x7F;
+        cpu.status=cpu.status|0b0000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xFE);
+        assert_eq!(cpu.status,0b1100_0000);
+    }
+
+    #[test]
+    fn test_sbc_no_overflow() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0xe9, 0x7F, 0x00]);
+        cpu.reset();
+        cpu.register_a=0x7E;
+        cpu.status=cpu.status|0b0000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0xFF);
+        assert_eq!(cpu.status,0b1000_0000);
+    }
+
+    //LOGICAL
+    // AND
+    #[test]
+    fn test_and() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x29, 0b0000_1100, 0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_1010;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_1000);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    // EOR
+    #[test]
+    fn test_eor() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x49, 0b0000_1100, 0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_1010;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0110);
+        assert_eq!(cpu.status,0b0000_0000);
+
+    }
+
+    // ORA
+    #[test]
+    fn test_ora() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x09, 0b0000_1100, 0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_1010;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_1110);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+
+    //SHIFT
+    // ASL
+    #[test]
+    fn test_asl_a() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x0a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0110);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_asl_zero_page() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x06, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0110);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_asl_a_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x0a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b1000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a,0b0000_0010);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+    #[test]
+    fn test_asl_zero_page_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x06, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b1000_0001);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0010);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+
+    // LSR
+    #[test]
+    fn test_lsr_a() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x4a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0010;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_lsr_zero_page() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x46, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0010);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0x01);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_lsr_zero_page_zero_flag() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x46, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0001);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0x00);
+        assert_eq!(cpu.status,0b0000_0011);
+    }
+
+    #[test]
+    fn test_lsr_a_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x4a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.run();
+        assert_eq!(cpu.register_a,0x01);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+    #[test]
+    fn test_lsr_zero_page_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x46, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0x01);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+
+    // ROL
+    #[test]
+    fn test_rol_a() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x2a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0110);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_rol_zero_page() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x26, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0110);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_rol_a_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x2a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0111);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_rol_zero_page_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x26, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0111);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_rol_a_zero_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x2a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0000;
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_rol_zero_page_zero_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x26, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0000);
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    // ROR
+    #[test]
+    fn test_ror_a() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x6a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0010;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_ror_zero_page() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x66, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0010);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0000);
+    }
+
+    #[test]
+    fn test_ror_a_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x6a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+    #[test]
+    fn test_ror_zero_page_occur_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x66, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b0000_0001);
+        assert_eq!(cpu.status,0b0000_0001);
+    }
+
+    #[test]
+    fn test_ror_a_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x6a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0011;
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b1000_0001);
+        assert_eq!(cpu.status,0b1000_0001);
+    }
+
+    #[test]
+    fn test_ror_zero_page_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x66, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0011);
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b1000_0001);
+        assert_eq!(cpu.status,0b1000_0001);
+    }
+
+    #[test]
+    fn test_ror_a_zero_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x6a,0x00]);
+        cpu.reset();
+        cpu.register_a=0b0000_0000;
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.register_a, 0b1000_0000);
+        assert_eq!(cpu.status,0b1000_0000);
+    }
+
+    #[test]
+    fn test_ror_zero_page_zero_with_carry() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x66, 0b0000_0001, 0x00]);
+        cpu.reset();
+        cpu.mem_write(0x0001,0b0000_0000);
+        cpu.status=cpu.status|0b000_0001;
+        cpu.run();
+        assert_eq!(cpu.mem_read(0x0001),0b1000_0000);
+        assert_eq!(cpu.status,0b1000_0000);
+    }
 }
 
