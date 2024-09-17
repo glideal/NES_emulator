@@ -321,7 +321,6 @@ impl CPU{
         }else{
             self.status=self.status&0b1111_1110;
         }
-
     }
 
     fn lda(&mut self, mode: &AddressingMode){
@@ -556,6 +555,29 @@ impl CPU{
                     self.compare(&opcode.mode, self.register_x);
                 }
 
+                //BRANCHING
+                //JMP
+                0x4c=>{
+                    let addr=self.mem_read_u16(self.program_counter);
+                    self.program_counter=addr;
+                    continue;
+                }
+
+                0x6c=>{
+                    //0x6cではprogram_counterがさすメモリの値をアドレスとみなし、そのアドレスがさすメモリの値をまたアドレスとみなしてそこへjumpする。
+                    let addr=self.mem_read_u16(self.program_counter);
+                    let indirect_ref:u16;
+                    if (addr&0x00FF)==0x00FF{//0x6cのバグを表現
+                        let lo=self.mem_read(addr);
+                        let hi=self.mem_read(addr&0xFF00);
+                        indirect_ref=(hi as u16)<<8|(lo as u16);
+                    }else{
+                        indirect_ref=self.mem_read_u16(addr);
+                    }
+                    self.program_counter=indirect_ref;
+                    continue;
+                }
+
                 //TAX
                 0xAA=>{
                     self.tax();
@@ -567,7 +589,7 @@ impl CPU{
                 _=>todo!()
             }
             self.program_counter+=(opcode.len-1) as u16;
-            println!("{}",self.program_counter);
+            println!("{:x}",self.program_counter);
         }
     }
 
@@ -1192,6 +1214,35 @@ mod test{
         cpu.run();
         assert_eq!(cpu.mem_read(0x0001),0b1000_0000);
         assert_eq!(cpu.status,0b1000_0000);
+    }
+    
+    // JMP
+    #[test]
+    fn test_jmp() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x4c, 0x30,0x40,0x00]);
+        cpu.reset();
+        cpu.mem_write(0x4030, 0xa9);//0xad=LDA(Absolute)
+        cpu.mem_write(0x4031, 0x22);
+        cpu.run();
+        assert_eq!(cpu.status,0);
+        //assert_eq!(cpu.program_counter,0x4032);//0x00があるのでややこしい
+        assert_eq!(cpu.register_a,0x22);
+    }
+
+    #[test]
+    fn test_jmp_indirect() {
+        let mut cpu=CPU::new();
+        cpu.load(vec![0x6c, 0x30,0x40,0x00]);
+        cpu.reset();
+        cpu.mem_write(0x4030, 0x01);
+        cpu.mem_write(0x4031, 0x02);
+        cpu.mem_write(0x0201, 0xa9);
+        cpu.mem_write(0x0202, 0x66);
+        cpu.run();
+        assert_eq!(cpu.status,0);
+        //assert_eq!(cpu.program_counter,0x0203);
+        assert_eq!(cpu.register_a,0x66);
     }
 }
 
