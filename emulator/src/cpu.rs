@@ -271,6 +271,59 @@ impl CPU{
         self.update_zero_and_negative_flags(self.mem_read(addr));
     }
 
+    fn inc(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut value=self.mem_read(addr);
+        
+        value=value.wrapping_add(1);
+        self.mem_write(addr,value);
+        self.update_zero_and_negative_flags(value);
+    }
+    
+    fn inx(&mut self){
+        self.register_x=self.register_x.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+
+    fn iny(&mut self){
+        self.register_y=self.register_y.wrapping_add(1);
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn dec(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let mut value=self.mem_read(addr);
+        
+        value=value.wrapping_sub(1);
+        self.mem_write(addr,value);
+        self.update_zero_and_negative_flags(value);
+    }
+
+    fn dex(&mut self){
+        self.register_x=self.register_x.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_x);
+    }
+
+    fn dey(&mut self){
+        self.register_y=self.register_y.wrapping_sub(1);
+        self.update_zero_and_negative_flags(self.register_y);
+    }
+
+    fn compare(&mut self,mode:&AddressingMode,target:u8){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        let tmp=target.wrapping_sub(value);
+        self.update_zero_and_negative_flags(tmp);
+        if target>=value {
+            self.status=self.status|0b0000_0001;
+        }else{
+            self.status=self.status&0b1111_1110;
+        }
+
+    }
+
     fn lda(&mut self, mode: &AddressingMode){
         let addr=self.get_operand_address(mode);
         let value=self.mem_read(addr);
@@ -291,18 +344,6 @@ impl CPU{
 
     fn tax(&mut self){
         self.register_x=self.register_a;
-        self.update_zero_and_negative_flags(self.register_x);
-    }
-
-    fn inx(&mut self){
-        self.register_x=self.register_x.wrapping_add(1);
-        /*
-        if self.register_x==0xff{
-            self.register_x=0x00;
-        }else{
-            self.register_x+=1;
-        }
-        */
         self.update_zero_and_negative_flags(self.register_x);
     }
 
@@ -476,14 +517,48 @@ impl CPU{
                 0x66 | 0x76 | 0x6e | 0x7e => {
                     self.ror(&opcode.mode);
                 }
+                
+                // INC
+                0xe6 | 0xf6 | 0xee | 0xfe => {
+                    self.inc(&opcode.mode);
+                }
+
+                //INX
+                0xE8=>self.inx(),
+
+                // INY
+                0xc8 => self.iny(),
+
+                // DEC
+                0xc6 | 0xd6 | 0xce | 0xde => {
+                    self.dec(&opcode.mode);
+                }
+
+                // DEX
+                0xca =>self.dex(),
+                
+
+                // DEY
+                0x88 =>self.dey(),
+
+                // CMP
+                0xc9 | 0xc5 | 0xd5 | 0xcd | 0xdd | 0xd9 | 0xc1 | 0xd1 => {
+                    self.compare(&opcode.mode, self.register_a);
+                }
+
+                // CPY
+                0xc0 | 0xc4 | 0xcc => {
+                    self.compare(&opcode.mode, self.register_y);
+                }
+
+                // CPX
+                0xe0 | 0xe4 | 0xec => {
+                    self.compare(&opcode.mode, self.register_x);
+                }
 
                 //TAX
                 0xAA=>{
                     self.tax();
-                }
-                //INX
-                0xE8=>{
-                    self.inx();
                 }
 
                 0x00=>{
