@@ -407,6 +407,13 @@ impl CPU{
 
     }
 
+    fn branch(&mut self){
+        let jump=self.mem_read(self.program_counter)as i16;
+        let addr=(self.program_counter as i32).wrapping_add(1).wrapping_add(jump as i32) as u16;//自分で書いた//筆者は間違ってね？
+
+        self.program_counter=addr;
+    }
+
     fn push(&mut self,value:u8){
         self.stack_pointer=self.stack_pointer.wrapping_sub(1);
         self.mem_write(STACK|(self.stack_pointer as u16),value);
@@ -622,7 +629,8 @@ impl CPU{
 
                 //JSR//stack系を作った後で
                 0x20=>{
-                    self.push_u16(self.program_counter+2-1);//RTSで+1するから＜－これは仕様
+                    self.push_u16(self.program_counter+2-1);//RTSで+1するから。＜－これは仕様
+                                                                //-1したり、+1するのはジャンプ命令に安全性を持たせるため
                     let tmp=self.mem_read_u16(self.program_counter);
                     self.program_counter=tmp;
                     // continue;
@@ -631,6 +639,73 @@ impl CPU{
                 0x60=>{
                     self.program_counter=self.pop_u16()+1;
                     // continue;
+                }
+                //RTI
+                0x40=>{
+                    self.status=self.pop()&0b1110_1111;
+                    self.program_counter=self.pop_u16();
+                }
+                //BNE
+                0xD0=>{
+                    if self.status&0b0000_0010==0{
+                        self.branch();
+                    }
+                }
+                //BVS
+                0x70=>{
+                    if self.status&0b0100_0000==0b0100_0000{
+                        self.branch();
+                    }
+                }
+                //BVC
+                0x50=>{
+                    if self.status&0b0100_0000==0{
+                        self.branch();
+                    }
+                }
+                //BPL
+                0x10=>{
+                    if self.status&0b1000_0000==0{
+                        self.branch();
+                    }
+                }
+                //BMI
+                0x30=>{
+                    if self.status&0b1000_0000==0b1000_0000{
+                        self.branch();
+                    }
+                }
+                //BEQ
+                0xF0=>{
+                    if self.status&0b0000_0010==0b0000_0010{
+                        self.branch();
+                    }
+                }
+                //BCS
+                0xB0=>{
+                    if self.status&0b0000_0001==0b0000_0001{
+                        self.branch();
+                    }
+                }
+                //BCC
+                0x90=>{
+                    if self.status&0b0000_0001==0{
+                        self.branch();
+                    }
+                }
+
+                //Bit Test
+                //BIT
+                0x24|0x2c=>{
+                    let addr=self.get_operand_address(&opcode.mode);
+                    let value=self.mem_read(addr);
+
+                    if self.register_a&value==0{
+                        self.status=self.status|0b0000_0010;
+                    }else{
+                        self.status=self.status&0b1111_1101;
+                    }
+                    self.status=(self.status&0b0011_1111)|(value&0b1100_0000);//N and V flags
                 }
 
                 //TAX
@@ -662,8 +737,6 @@ impl CPU{
             }
         }
     }
-
-
     pub fn interpret(&mut self, program:Vec<u8>){
         self.load_and_run(program);
     }
