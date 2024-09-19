@@ -332,6 +332,17 @@ impl CPU{
             self.status=self.status&0b1111_1110;
         }
     }
+    fn bit(&mut self,mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
+
+        if self.register_a&value==0{
+            self.status=self.status|0b0000_0010;
+        }else{
+            self.status=self.status&0b1111_1101;
+        }
+        self.status=(self.status&0b0011_1111)|(value&0b1100_0000);//N and V flags
+    }
 
     fn lda(&mut self, mode: &AddressingMode){
         let addr=self.get_operand_address(mode);
@@ -696,17 +707,7 @@ impl CPU{
 
                 //Bit Test
                 //BIT
-                0x24|0x2c=>{
-                    let addr=self.get_operand_address(&opcode.mode);
-                    let value=self.mem_read(addr);
-
-                    if self.register_a&value==0{
-                        self.status=self.status|0b0000_0010;
-                    }else{
-                        self.status=self.status&0b1111_1101;
-                    }
-                    self.status=(self.status&0b0011_1111)|(value&0b1100_0000);//N and V flags
-                }
+                0x24|0x2c=>self.bit(&opcode.mode),
 
                 //TAX
                 0xAA=>{
