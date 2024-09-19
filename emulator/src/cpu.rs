@@ -352,19 +352,23 @@ impl CPU{
         self.update_zero_and_negative_flags(self.register_a);
     }
 
-    fn ldx(&mut self, value:u8){
+    fn ldx(&mut self, mode:&AddressingMode){
+        let addr=self.get_operand_address(mode);
+        let value=self.mem_read(addr);
         self.register_x=value;
         self.update_zero_and_negative_flags(self.register_x);
     }
 
-    fn sta(&mut self,mode:&AddressingMode){
+    fn ldy(&mut self, mode:&AddressingMode){
         let addr=self.get_operand_address(mode);
-        self.mem_write(addr,self.register_a);
+        let value=self.mem_read(addr);
+        self.register_y=value;
+        self.update_zero_and_negative_flags(self.register_y);
     }
 
-    fn tax(&mut self){
-        self.register_x=self.register_a;
-        self.update_zero_and_negative_flags(self.register_x);
+    fn store(&mut self,mode:&AddressingMode,value:u8){
+        let addr=self.get_operand_address(mode);
+        self.mem_write(addr,value);
     }
 
     fn update_zero_and_negative_flags(&mut self, result:u8){
@@ -479,9 +483,11 @@ impl CPU{
     }
 
     pub fn load(&mut self,program:Vec<u8>){
-        self.memory[0x8000..(0x8000+program.len())].copy_from_slice(&program[..]);
+        self.memory[0x0600..(0x0600 + program.len())].copy_from_slice(&program[..]);
+        //self.memory[0x8000..(0x8000+program.len())].copy_from_slice(&program[..]);
         //memory[0c8000..(ox8000+program.len())]にprogram[..]の内容を格納する。
-        self.mem_write_u16(0xFFFC,0x8000);
+        //self.mem_write_u16(0xFFFC,0x8000);  
+        self.mem_write_u16(0xFFFC, 0x0600);
     }
 
     pub fn reset(&mut self){
@@ -508,21 +514,36 @@ impl CPU{
                 0x00=>{
                     return;
                 }
-
-                //LDX
-                0xA2=>{
-                    let param=self.mem_read(self.program_counter);
-                    self.ldx(param);
-                }
+                /*NOP*/0xea=>{/*do nothing*/}
 
                 //LDA
                 0xA9|0xA5|0xB5|0xAD|0xBD|0xB9|0xA1|0xB1=>{
                     self.lda(&opcode.mode);
                 }
 
+                // LDX
+                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => {
+                    self.ldx(&opcode.mode);
+                }
+
+                // LDY
+                0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => {
+                    self.ldy(&opcode.mode);
+                }
+
                 //STA
                 0x85|0x95|0x8d|0x9d|0x99|0x81|0x91=>{
-                    self.sta(&opcode.mode);
+                    self.store(&opcode.mode,self.register_a);
+                }
+
+                // STX
+                0x86 | 0x96 | 0x8e => {
+                    self.store(&opcode.mode,self.register_x);
+                }
+
+                // STY
+                0x84 | 0x94 | 0x8c => {
+                    self.store(&opcode.mode,self.register_y);
                 }
 
                 //ADC
@@ -708,10 +729,48 @@ impl CPU{
                 //Bit Test
                 //BIT
                 0x24|0x2c=>self.bit(&opcode.mode),
+                
+                //FLGAS
+                /* CLD */ 0xd8 => self.status=self.status&0b1111_0111,
+                /* CLI */ 0x58 => self.status=self.status&0b1111_1011,
+                /* CLV */ 0xb8 => self.status=self.status&0b1011_1111,
+                /* CLC */ 0x18 => self.status=self.status&0b1111_1110,
+                /* SEC */ 0x38 => self.status=self.status|0b0000_0001,
+                /* SEI */ 0x78 => self.status=self.status|0b0000_0100,
+                /* SED */ 0xf8 => self.status=self.status|0b0000_1000,
 
-                //TAX
+                // TAX
                 0xAA=>{
-                    self.tax();
+                    self.register_x = self.register_a;
+                    self.update_zero_and_negative_flags(self.register_x);
+                }
+                /* TAY */
+                0xa8 => {
+                    self.register_y = self.register_a;
+                    self.update_zero_and_negative_flags(self.register_y);
+                }
+
+                /* TSX */
+                0xba => {
+                    self.register_x = self.stack_pointer;
+                    self.update_zero_and_negative_flags(self.register_x);
+                }
+
+                /* TXA */
+                0x8a => {
+                    self.register_a = self.register_x;
+                    self.update_zero_and_negative_flags(self.register_a);
+                }
+
+                /* TXS */
+                0x9a => {
+                    self.stack_pointer = self.register_x;
+                }
+
+                /* TYA */
+                0x98 => {
+                    self.register_a = self.register_y;
+                    self.update_zero_and_negative_flags(self.register_a);
                 }
 
                 //STACK
@@ -726,12 +785,8 @@ impl CPU{
                 0x08=>self.push(self.status|0b0001_0000),
                 //PLP
                 0x28=>self.status=self.pop()&0b1110_1111,
-
-
-
-                _ =>todo!(),
-
-
+                
+                _ => todo!(),
             }
             if program_counter_state==self.program_counter{
                 self.program_counter+=(opcode.len-1) as u16;
